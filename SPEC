@@ -1,0 +1,111 @@
+; -- bf 
+; -- version 0.1
+; -- Intel HEX but with text.
+;
+; The bf format is a binary specification format designed to make
+; writing binary files from text files a straightforward process.
+; The format is based around the concept of an abstract state machine
+; with a writing head and a linear tape, attached to the write head.
+; The tape, as far as the machine is concerned, starts at index zero 
+; and is infine going forward, and is divided into byte cells, that
+; cannot be further divided. The machine can also seek along the tape
+; to whatever position it desires.
+
+; -- Registers
+;
+; In addition, the machine has two registers responsible for controlling
+; its behavious, that may be changed via commands, these are:
+;		- Head Register: Contains the offset of the write head.
+; 		- Filling Register: The filling register is an important implementation
+;							detail, as the file representing the tape will
+;							often need to be expanded to accomodate for a seek
+;							operation to an index that does not yet exist.
+;							In those cases, the expanded bytes will be filled
+;							with the data in the filling register.
+;		- Cell Register: The format allows for writing with bit granularity,
+;						however, as the tape model has byte granularity, all
+;						writes whose size are smaller than 8 bits will get
+;						buffered in the cell register. Later when the next
+;						write happens, the contents of this register will be
+;						appended to be high bits of the written data.
+;		- Sum Register: The value of every written byte is summed into here.
+;		
+
+;
+; -- Commands
+;
+; Commands are language statements that begin with a control character
+; and end in a newline, they can either change the contents of a register
+; or write data at the current position on the tape.
+;		w [0-9a-fA-F]*:
+;			Writes a stream of hexadecimal digits.
+;		q [0-1]*:
+;			Writes a stream of binary digits.
+;		l [0-9a-fA-F]{2}: 
+;			Changes the filling register to the given byte.
+;		. [0-9a-fA-F]{?}: 
+;			Seeks to the given position on the tape.
+;			Note that this command does not have a specific number of
+;			hexadecimal digits it takes, as it is left to the implementation
+;			to decide on how many cells can effectively be addressed.
+;		: [0-9a-fA-F]{2}:
+;			Checks the contents of the sum register's two's compliment against
+;			the byte value given to this command and clears the sum register.
+;		^ [:|w]:
+;			Clears the contents of a register:
+;				: -> Clears the sum register.
+;				w -> Clears the cell register.
+;		>
+;			Seeks to the end of the written area.
+;		;
+;			Starts a new comment, any characters after this will be ignored,
+;			even if they are a control character.
+;		
+
+;
+; -- Using
+; 
+; By far the most common operation will be that of writing data.
+; As a simple example, let's start by writing a single byte.
+w 57
+
+; In the same fashion, you can add as many bytes as you want:
+w 65 6c 63 
+
+; Oh, by the way, spaces and tabs and such between digits are ignored,
+; so the last line will produce the exact same result as
+; w 656c63
+
+; Because of the cell register, you may also break the command at unaligned
+; positions, which allows you to finish the byte with another command.
+w 6
+w f
+
+; Next, let's move on to writing bit by bit, which might make things easier
+; to read on parts of the file that have a represantation that makes more
+; sense when you can see the bits themselves, like masks or flags.
+q 0110 1101
+q 0 1 1 0 0 1 0 1
+
+; We can also seek to any position we want in the file, which can be done
+; by using the seek command. If you do that to parts of the file that don't
+; exist yet, the file will have to be expanded to that size first, in that
+; case, the new cells in the file up the new position will be filled with
+; the data in the fill register. Let's change the fill register and jump
+; boldly into the future:
+l 20
+. b
+
+; Now we can add more stuff starting at offset 0xB.
+w 626
+q 0110
+
+; Or, if you like the past better, we can go back and edit stuff there.
+. 8
+w 74 6F
+
+; Finally, we can seek to end.
+>
+w 0a
+
+; Now, run this file and see what you get.
